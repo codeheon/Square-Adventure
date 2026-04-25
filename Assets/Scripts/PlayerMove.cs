@@ -12,6 +12,7 @@ public class PlayerMove : MonoBehaviour
     [SerializeField] private float linearDamping = 0.5f;      // 선형 감쇠
     [SerializeField] private LayerMask groundLayer;           // 바닥 판정을 위한 레이어 마스크
     [SerializeField] private float groundCheckDistance = 0.6f; // 바닥 레이캐스트 거리
+    [SerializeField] private float groundCheckWidth = 0.4f;   // 바닥 감지 범위 너비 (좌우)
 
     [Header("Charging & Launch")]
     // 충전 및 발사 관련 설정
@@ -70,9 +71,18 @@ public class PlayerMove : MonoBehaviour
     // 바닥에 닿아 있는지 레이캐스트로 판정하고, 그에 따라 감쇠를 조절
     private void CheckGrounded()
     {
-        // 바닥 감지 레이캐스트
-        RaycastHit2D hit = Physics2D.Raycast(transform.position, Vector2.down, groundCheckDistance, groundLayer);
-        isGrounded = hit.collider != null;
+        // 중앙에서 바닥 감지
+        RaycastHit2D hitCenter = Physics2D.Raycast(transform.position, Vector2.down, groundCheckDistance, groundLayer);
+        
+        // 좌우에서도 바닥 감지 (끝부분 감지용)
+        Vector2 leftPos = (Vector2)transform.position + Vector2.left * groundCheckWidth;
+        Vector2 rightPos = (Vector2)transform.position + Vector2.right * groundCheckWidth;
+        
+        RaycastHit2D hitLeft = Physics2D.Raycast(leftPos, Vector2.down, groundCheckDistance, groundLayer);
+        RaycastHit2D hitRight = Physics2D.Raycast(rightPos, Vector2.down, groundCheckDistance, groundLayer);
+        
+        // 세 곳 중 하나라도 ground에 닿으면 grounded 판정
+        isGrounded = hitCenter.collider != null || hitLeft.collider != null || hitRight.collider != null;
 
         // 바닥에 있을 때 물리 감쇄 조절 (정지 상태 보정)
         if (isGrounded && !isCharging)
@@ -181,6 +191,16 @@ public class PlayerMove : MonoBehaviour
     private void OnDrawGizmos()
     {
         Gizmos.color = isGrounded ? Color.green : Color.red;
+        
+        // 중앙
         Gizmos.DrawLine(transform.position, transform.position + Vector3.down * groundCheckDistance);
+        
+        // 좌측
+        Vector3 leftPos = transform.position + Vector3.left * groundCheckWidth;
+        Gizmos.DrawLine(leftPos, leftPos + Vector3.down * groundCheckDistance);
+        
+        // 우측
+        Vector3 rightPos = transform.position + Vector3.right * groundCheckWidth;
+        Gizmos.DrawLine(rightPos, rightPos + Vector3.down * groundCheckDistance);
     }
 }
