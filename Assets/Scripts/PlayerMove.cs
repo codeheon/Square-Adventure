@@ -1,34 +1,40 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+// 플레이어의 이동과 충전-발사 시스템을 처리하는 컴포넌트
+// - 바닥 감지, 발사 충전, 시각적 피드백(인디케이터, 궤적)을 포함
 public class PlayerMove : MonoBehaviour
 {
     [Header("Physics Settings")]
-    [SerializeField] private float mass = 1.0f;
-    [SerializeField] private float gravityScale = 3.0f;
-    [SerializeField] private float linearDamping = 0.5f;
-    [SerializeField] private LayerMask groundLayer;
-    [SerializeField] private float groundCheckDistance = 0.6f;
+    // 물리 관련 설정: Rigidbody2D의 기본 속성들
+    [SerializeField] private float mass = 1.0f;                // 질량
+    [SerializeField] private float gravityScale = 3.0f;        // 중력 배율
+    [SerializeField] private float linearDamping = 0.5f;      // 선형 감쇠
+    [SerializeField] private LayerMask groundLayer;           // 바닥 판정을 위한 레이어 마스크
+    [SerializeField] private float groundCheckDistance = 0.6f; // 바닥 레이캐스트 거리
 
     [Header("Charging & Launch")]
-    [SerializeField] private float minLaunchForce = 5.0f;
-    [SerializeField] private float maxLaunchForce = 20.0f;
-    [SerializeField] private float maxChargeTime = 1.5f;
-    [SerializeField] private float chargeScaleMultiplier = 2.5f;
-    [SerializeField] private float launchCooldown = 0.2f;
+    // 충전 및 발사 관련 설정
+    [SerializeField] private float minLaunchForce = 5.0f;     // 최소 발사 힘
+    [SerializeField] private float maxLaunchForce = 20.0f;    // 최대 발사 힘
+    [SerializeField] private float maxChargeTime = 1.5f;      // 최대 충전 시간 (초)
+    [SerializeField] private float chargeScaleMultiplier = 2.5f; // 충전 시 인디케이터 크기 배율
+    [SerializeField] private float launchCooldown = 0.2f;     // 연속 발사 방지 쿨다운(초)
 
     [Header("Visual Feedback")]
-    [SerializeField] private GameObject chargeIndicator;
-    [SerializeField] private LineRenderer trajectoryLine;
-    [SerializeField] private Color baseColor = Color.white;
-    [SerializeField] private Color chargingColor = Color.yellow;
+    // 시각적 피드백 관련 오브젝트
+    [SerializeField] private GameObject chargeIndicator;     // 충전 시 표시할 원형 인디케이터
+    [SerializeField] private LineRenderer trajectoryLine;    // 발사 방향을 보여주는 궤적 선
+    [SerializeField] private Color baseColor = Color.white;  // (미사용) 기본 색상
+    [SerializeField] private Color chargingColor = Color.yellow; // (미사용) 충전 중 색상
 
+    // 런타임 상태 변수
     private Rigidbody2D rb;
-    private Vector2 lastCheckpoint;
-    private float currentCharge;
-    private float lastLaunchTime;
-    private bool isCharging;
-    private bool isGrounded;
+    private Vector2 lastCheckpoint; // 마지막 체크포인트 위치
+    private float currentCharge;    // 현재 충전 시간
+    private float lastLaunchTime;   // 마지막 발사 시각
+    private bool isCharging;        // 충전 중 여부
+    private bool isGrounded;        // 바닥에 닿아 있는지 여부
 
     void Start()
     {
@@ -41,6 +47,7 @@ public class PlayerMove : MonoBehaviour
 
         lastCheckpoint = transform.position;
 
+        // 인디케이터와 궤적 선 초기화
         if (chargeIndicator != null)
         {
             chargeIndicator.SetActive(false);
@@ -55,10 +62,12 @@ public class PlayerMove : MonoBehaviour
 
     void Update()
     {
+        // 프레임마다 바닥 체크 및 입력(충전) 처리
         CheckGrounded();
         HandleCharging();
     }
 
+    // 바닥에 닿아 있는지 레이캐스트로 판정하고, 그에 따라 감쇠를 조절
     private void CheckGrounded()
     {
         // 바닥 감지 레이캐스트
@@ -76,6 +85,7 @@ public class PlayerMove : MonoBehaviour
         }
     }
 
+    // 키 입력에 따른 충전(스페이스바) 처리 및 시각적 피드백 업데이트
     private void HandleCharging()
     {
         // 쿨타임 및 바닥 상태 체크
@@ -96,24 +106,25 @@ public class PlayerMove : MonoBehaviour
 
         if (isCharging)
         {
+            // 충전 시간 누적 및 비율 계산
             currentCharge += Time.deltaTime;
             float chargePercent = Mathf.Clamp01(currentCharge / maxChargeTime);
 
-            // 마우스 위치 및 방향 계산
+            // 마우스 위치 및 방향 계산 (발사 방향)
             Vector2 mouseScreenPos = Mouse.current.position.ReadValue();
             Vector3 mousePos = Camera.main.ScreenToWorldPoint(new Vector3(mouseScreenPos.x, mouseScreenPos.y, 0f));
             mousePos.z = 0f;
 
             Vector2 launchDirection = ((Vector2)mousePos - (Vector2)transform.position).normalized;
 
-            // 시각적 피드백: 원 크기
+            // 시각적 피드백: 원 크기 (충전량에 따라 확대)
             if (chargeIndicator != null)
             {
                 float scale = chargePercent * chargeScaleMultiplier;
                 chargeIndicator.transform.localScale = new Vector3(scale, scale, 1f);
             }
 
-            // 시각적 피드백: 궤적 가이드
+            // 시각적 피드백: 궤적 가이드 (발사 힘에 따라 길이 조정)
             if (trajectoryLine != null)
             {
                 trajectoryLine.enabled = true;
@@ -131,6 +142,7 @@ public class PlayerMove : MonoBehaviour
         }
     }
 
+    // 실제 발사 처리: 현재 속도 초기화 후 충전량에 따른 힘을 Impulse로 추가
     private void Launch(Vector2 direction, float chargePercent)
     {
         rb.linearVelocity = Vector2.zero; // 이전 속도 초기화
@@ -142,6 +154,7 @@ public class PlayerMove : MonoBehaviour
         CancelCharge();
     }
 
+    // 충전 취소 시 상태 초기화 및 시각 요소 비활성화
     private void CancelCharge()
     {
         isCharging = false;
@@ -150,11 +163,13 @@ public class PlayerMove : MonoBehaviour
         if (trajectoryLine != null) trajectoryLine.enabled = false;
     }
 
+    // 체크포인트 위치 설정
     public void SetCheckpoint(Vector2 newPos)
     {
         lastCheckpoint = newPos;
     }
 
+    // 플레이어 사망 시 체크포인트로 리스폰
     public void Die()
     {
         rb.linearVelocity = Vector2.zero;
@@ -162,6 +177,7 @@ public class PlayerMove : MonoBehaviour
         CancelCharge();
     }
 
+    // 에디터에서 바닥 체크용 기즈모 표시
     private void OnDrawGizmos()
     {
         Gizmos.color = isGrounded ? Color.green : Color.red;
