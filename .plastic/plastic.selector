@@ -1,0 +1,4 @@
+repository "Square Adventure/Square Adventure@14569650024827@cloud"
+  path "/"
+    br "/main"
+    co "/main"
