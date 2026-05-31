@@ -28,10 +28,6 @@ public class PlayerMove : MonoBehaviour
     [SerializeField] private Color baseColor = Color.white;  // (미사용) 기본 색상
     [SerializeField] private Color chargingColor = Color.yellow; // (미사용) 충전 중 색상
 
-    [Header("Respawn")]
-    // 리스폰 관련 설정
-    public Vector2 checkpointPosition;                       // 리스폰 지점 (퍼블릭으로 노출)
-
     // 런타임 상태 변수
     private Rigidbody2D rb;
     private Vector2 lastCheckpoint; // 마지막 체크포인트 위치
@@ -39,7 +35,6 @@ public class PlayerMove : MonoBehaviour
     private float lastLaunchTime;   // 마지막 발사 시각
     private bool isCharging;        // 충전 중 여부
     private bool isGrounded;        // 바닥에 닿아 있는지 여부
-    private int chargeStartButton;  // 충전을 시작한 버튼 추적 (0=없음, 1=스페이스, 2=마우스)
 
     void Start()
     {
@@ -51,7 +46,6 @@ public class PlayerMove : MonoBehaviour
         rb.linearDamping = linearDamping;
 
         lastCheckpoint = transform.position;
-        checkpointPosition = lastCheckpoint;
 
         // 인디케이터와 궤적 선 초기화
         if (chargeIndicator != null)
@@ -71,7 +65,6 @@ public class PlayerMove : MonoBehaviour
         // 프레임마다 바닥 체크 및 입력(충전) 처리
         CheckGrounded();
         HandleCharging();
-        HandleRespawnInput();
     }
 
     // 바닥에 닿아 있는지 레이캐스트로 판별하고, 그에 따라 감쇠를 조절
@@ -93,7 +86,7 @@ public class PlayerMove : MonoBehaviour
         // 세 곳 중 하나라도 ground에 닿으면 grounded 판정
         isGrounded = hitCenter.collider != null || hitLeft.collider != null || hitRight.collider != null;
 
-        // 바닥에 있을 때 물리 감쇠 조절 (정지 상태 보정)
+        // 바닥에 있을 때 물리 감쇄 조절 (정지 상태 보정)
         if (isGrounded && !isCharging)
         {
             rb.linearDamping = linearDamping * 2f;
@@ -104,7 +97,7 @@ public class PlayerMove : MonoBehaviour
         }
     }
 
-    // 키 입력에 따른 충전(스페이스바 또는 터치/마우스) 처리 및 시각적 피드백 업데이트
+    // 키 입력에 따른 충전(스페이스바) 처리 및 시각적 피드백 업데이트
     private void HandleCharging()
     {
         // 쿨타임 및 바닥 상태 체크
@@ -114,29 +107,16 @@ public class PlayerMove : MonoBehaviour
             return;
         }
 
-        // 스페이스바 또는 마우스/터치 입력 감지
-        bool spacePressed = Keyboard.current.spaceKey.wasPressedThisFrame;
-        bool mousePressed = Mouse.current.leftButton.wasPressedThisFrame;
-        bool spaceHeld = Keyboard.current.spaceKey.isPressed;
-        bool mouseHeld = Mouse.current.leftButton.isPressed;
-        bool spaceReleased = Keyboard.current.spaceKey.wasReleasedThisFrame;
-        bool mouseReleased = Mouse.current.leftButton.wasReleasedThisFrame;
-
-        // 충전 시작: 어떤 버튼을 눌렀는지 추적
-        if ((spacePressed || mousePressed) && !isCharging)
+        // 스페이스바 입력 감지 (Input System 방식)
+        if (Keyboard.current.spaceKey.wasPressedThisFrame)
         {
             isCharging = true;
-            if (spacePressed)
-                chargeStartButton = 1; // 스페이스바로 시작
-            else
-                chargeStartButton = 2; // 마우스로 시작
             currentCharge = 0f;
             if (chargeIndicator != null) chargeIndicator.SetActive(true);
             if (trajectoryLine != null) trajectoryLine.enabled = true;
         }
 
-        // 충전 중이면서 시작한 버튼이 눌려있을 때만 충전 유지
-        if (isCharging && ((chargeStartButton == 1 && spaceHeld) || (chargeStartButton == 2 && mouseHeld)))
+        if (isCharging)
         {
             // 충전 시간 누적 및 비율 계산
             currentCharge += Time.deltaTime;
@@ -165,30 +145,12 @@ public class PlayerMove : MonoBehaviour
                 trajectoryLine.SetPosition(0, transform.position);
                 trajectoryLine.SetPosition(1, endPoint);
             }
-        }
-        
-        // 시작한 버튼을 뗐을 때 발사
-        if (isCharging && ((chargeStartButton == 1 && spaceReleased) || (chargeStartButton == 2 && mouseReleased)))
-        {
-            // 마우스 위치 및 방향 계산 (발사 방향)
-            Vector2 mouseScreenPos = Mouse.current.position.ReadValue();
-            Vector3 mousePos = Camera.main.ScreenToWorldPoint(new Vector3(mouseScreenPos.x, mouseScreenPos.y, 0f));
-            mousePos.z = 0f;
-            Vector2 launchDirection = ((Vector2)mousePos - (Vector2)transform.position).normalized;
-            
-            float chargePercent = Mathf.Clamp01(currentCharge / maxChargeTime);
-            Launch(launchDirection, chargePercent);
-        }
-        // 시작한 버튼을 뗀 상태면 충전 취소
-        else if (isCharging && !((chargeStartButton == 1 && spaceHeld) || (chargeStartButton == 2 && mouseHeld)))
-        {
-            CancelCharge();
-        }
 
-        // R 키를 눌렀을 때 리스폰 지점으로 순간이동
-        if (Keyboard.current.rKey.wasPressedThisFrame)
-        {
-            Respawn();
+            // 스페이스바를 뗐을 때 발사
+            if (Keyboard.current.spaceKey.wasReleasedThisFrame)
+            {
+                Launch(launchDirection, chargePercent);
+            }
         }
     }
 
@@ -204,11 +166,10 @@ public class PlayerMove : MonoBehaviour
         CancelCharge();
     }
 
-    // 충전 취소 시 상태 초기화 및 시각적 요소 비활성화
+    // 충전 취소 시 상태 초기화 및 시각 요소 비활성화
     private void CancelCharge()
     {
         isCharging = false;
-        chargeStartButton = 0; // 버튼 추적 초기화
         currentCharge = 0f;
         if (chargeIndicator != null) chargeIndicator.SetActive(false);
         if (trajectoryLine != null) trajectoryLine.enabled = false;
@@ -218,7 +179,6 @@ public class PlayerMove : MonoBehaviour
     public void SetCheckpoint(Vector2 newPos)
     {
         lastCheckpoint = newPos;
-        checkpointPosition = newPos;
     }
 
     // 플레이어 사망 시 체크포인트로 리스폰
@@ -226,23 +186,6 @@ public class PlayerMove : MonoBehaviour
     {
         rb.linearVelocity = Vector2.zero;
         transform.position = lastCheckpoint;
-        CancelCharge();
-    }
-
-    // R 키 입력으로 리스폰 지점으로 순간이동
-    private void HandleRespawnInput()
-    {
-        if (Keyboard.current.rKey.wasPressedThisFrame)
-        {
-            Respawn();
-        }
-    }
-
-    // 리스폰 지점으로 순간이동
-    private void Respawn()
-    {
-        rb.linearVelocity = Vector2.zero;
-        transform.position = checkpointPosition;
         CancelCharge();
     }
 
