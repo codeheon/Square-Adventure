@@ -1,0 +1,86 @@
+name: Unity Build and Release 🚀
+
+on:
+  push:
+    tags:
+      - 'v*' # v1.0.0 같은 태그가 푸시될 때만 실행
+
+jobs:
+  build:
+    name: Build for Windows & Android 🎮
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        targetPlatform:
+          - StandaloneWindows64 # Windows 64비트
+          - Android             # 안드로이드
+          
+    steps:
+      # 1. 소스 코드 체크아웃
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true # 대용량 에셋(LFS) 사용 시 필수
+
+      # 2. 빌드 속도 향상을 위한 Library 폴더 캐싱
+      - name: Cache Library
+        uses: actions/cache@v3
+        with:
+          path: Library
+          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**') }}
+          restore-keys: |
+            Library-${{ matrix.targetPlatform }}-
+
+      # 3. 유니티 계정 정보를 이용한 자동 빌드 (GameCI)
+      - name: Run Unity Build
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}       # 깃허브 암호화 변수에서 가져옴
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}   # 깃허브 암호화 변수에서 가져옴
+        with:
+          targetPlatform: ${{ matrix.targetPlatform }}
+
+      # 4. 빌드 결과물 압축
+      - name: Zip Build Output
+        run: |
+          cd build/${{ matrix.targetPlatform }}
+          zip -r ../../${{ matrix.targetPlatform }}.zip .
+
+      # 5. 빌드 아티팩트 임시 저장
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build-${{ matrix.targetPlatform }}
+          path: ${{ matrix.targetPlatform }}.zip
+
+  release:
+    name: Create GitHub Release 📦
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 빌드 파일 다운로드
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # 깃허브 릴리즈 생성 및 파일 업로드
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/Build-StandaloneWindows64/StandaloneWindows64.zip
+            artifacts/Build-Android/Android.zip
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            ## 🎮 배포 안내
+            - GitHub Actions를 통해 계정 인증 후 자동 빌드된 버전입니다.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
